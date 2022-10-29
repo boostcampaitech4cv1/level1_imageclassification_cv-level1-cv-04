@@ -5,6 +5,7 @@ import multiprocessing
 import os
 import random
 import re
+from cutmix import *
 from importlib import import_module
 from pathlib import Path
 
@@ -14,7 +15,6 @@ import torch
 from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
-
 from dataset import MaskBaseDataset
 from loss import create_criterion
 
@@ -108,7 +108,13 @@ def train(data_dir, model_dir, args):
 
     # -- data_loader
     train_set, val_set = dataset.split_dataset()
+    
+    if args.use_cutmix:
+        collator = CutMixCollator(args.cutmix_alpha)
+    else:
+        collator = torch.utils.data.dataloader.default_collate
 
+    
     train_loader = DataLoader(
         train_set,
         batch_size=args.batch_size,
@@ -116,6 +122,7 @@ def train(data_dir, model_dir, args):
         shuffle=True,
         pin_memory=use_cuda,
         drop_last=True,
+        collate_fn = collator
     )
 
     val_loader = DataLoader(
@@ -135,7 +142,12 @@ def train(data_dir, model_dir, args):
     model = torch.nn.DataParallel(model)
 
     # -- loss & metric
-    criterion = create_criterion(args.criterion)  # default: cross_entropy
+    if args.use_cutmix:
+        train_criterion = CutMixCriterion(reduction = 'mean')
+    else:
+        train_criterion = create_criterion(args.criterion)  # default: cross_entropy
+    val_criterion = create_criterion(args.criterion)
+    
     opt_module = getattr(import_module("torch.optim"), args.optimizer)  # default: SGD
     optimizer = opt_module(
         filter(lambda p: p.requires_grad, model.parameters()),
@@ -159,19 +171,35 @@ def train(data_dir, model_dir, args):
         for idx, train_batch in enumerate(train_loader):
             inputs, labels = train_batch
             inputs = inputs['image'].to(device)
-            labels = labels.to(device)
+            
+            if isinstance(labels, (tuple, list)):
+                targets1, targets2, lam = labels
+                labels = (targets1.to(device), targets2.to(device), lam)
+            else:
+                labels = labels.to(device)
 
             optimizer.zero_grad()
 
             outs = model(inputs)
             preds = torch.argmax(outs, dim=-1)
-            loss = criterion(outs, labels)
+            loss = train_criterion(outs, labels)
 
             loss.backward()
             optimizer.step()
 
+            
+            
             loss_value += loss.item()
-            matches += (preds == labels).sum().item()
+            
+            if isinstance(labels, (tuple, list)):
+                targets1, targets2, lam = labels
+                cor1 = (preds == targets1).sum().item()
+                cor2 = (preds == targets2).sum().item()
+                matches += (lam * cor1 + (1 - lam) * cor2)
+            else:
+                matches += (preds == labels).sum().item()
+                
+                
             if (idx + 1) % args.log_interval == 0:
                 train_loss = loss_value / args.log_interval
                 train_acc = matches / args.batch_size / args.log_interval
@@ -203,7 +231,7 @@ def train(data_dir, model_dir, args):
                 outs = model(inputs)
                 preds = torch.argmax(outs, dim=-1)
 
-                loss_item = criterion(outs, labels).item()
+                loss_item = val_criterion(outs, labels).item()
                 acc_item = (labels == preds).sum().item()
                 val_loss_items.append(loss_item)
                 val_acc_items.append(acc_item)
@@ -252,11 +280,13 @@ if __name__ == '__main__':
     parser.add_argument('--lr_decay_step', type=int, default=20, help='learning rate scheduler deacy step (default: 20)')
     parser.add_argument('--log_interval', type=int, default=20, help='how many batches to wait before logging training status')
     parser.add_argument('--name', default='exp', help='model save at {SM_MODEL_DIR}/{name}')
+    parser.add_argument('--use_cutmix', action='store_true')
+    parser.add_argument('--cutmix_alpha', type=float, default=1.0, help='Data Cutmix')
 
     # Container environment
     parser.add_argument('--data_dir', type=str, default=os.environ.get('SM_CHANNEL_TRAIN', './train/images'))
     parser.add_argument('--model_dir', type=str, default=os.environ.get('SM_MODEL_DIR', './model'))
-
+    
     args = parser.parse_args()
     print(args)
 
