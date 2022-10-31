@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 import torch.nn as nn
-from loss import *
+
 
 def cutmix(batch, alpha):
     data, targets = batch
@@ -38,9 +38,8 @@ class CutMixCollator:
 
 
 class CutMixCriterion:
-    def __init__(self, args):
-        #self.criterion = nn.CrossEntropyLoss(reduction=reduction)
-        self.criterion = create_criterion(args.criterion)
+    def __init__(self, reduction):
+        self.criterion = nn.CrossEntropyLoss(reduction=reduction)
 
     def __call__(self, preds, targets):
         targets1, targets2, lam = targets

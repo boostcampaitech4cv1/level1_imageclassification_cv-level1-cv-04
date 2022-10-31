@@ -1,6 +1,5 @@
 import os
 import random
-import numpy as np
 from collections import defaultdict
 from enum import Enum
 from typing import Tuple, List
@@ -8,11 +7,10 @@ from typing import Tuple, List
 import numpy as np
 import torch
 from PIL import Image
-
+from torch.utils.data import Dataset, Subset, random_split
 import albumentations as A
 from albumentations.pytorch.transforms import ToTensorV2
-from torch.utils.data import Dataset, Subset, random_split
-# from torchvision.transforms import Resize, ToTensor, Normalize, Compose, CenterCrop, ColorJitter, HorizontalFlip,GaussNoise, GaussianBlur
+from torchvision.transforms import Resize, ToTensor, Normalize, Compose, CenterCrop, ColorJitter
 
 IMG_EXTENSIONS = [
     ".jpg", ".JPG", ".jpeg", ".JPEG", ".png",
@@ -26,28 +24,15 @@ def is_image_file(filename):
 
 class BaseAugmentation:
     def __init__(self, resize, mean, std, **args):
-        self.transform = A.Compose([
-            A.Resize(resize[0], resize[1], Image.BILINEAR),
-            A.Normalize(mean=mean, std=std),
-            ToTensorV2(),
+        self.transform = Compose([
+            Resize(resize, Image.BILINEAR),
+            ToTensor(),
+            Normalize(mean=mean, std=std),
         ])
 
     def __call__(self, image):
-        return self.transform(image=np.array(image))
-    
-class CustomAugmentation:
-    def __init__(self, resize, mean, std, **args):
-        self.transform = A.Compose([
-            A.Resize(400, 400),
-            A.CenterCrop(224, 224, Image.BILINEAR),
-            A.HorizontalFlip(p=0.5),
-            A.Normalize(mean=mean, std=std),
-            ToTensorV2()
-        ])
+        return self.transform(image)
 
-    def __call__(self, image):
-        return self.transform(image=np.array(image)) # image=np.array(image)
-    
 
 class AddGaussianNoise(object):
     """
@@ -66,7 +51,18 @@ class AddGaussianNoise(object):
         return self.__class__.__name__ + '(mean={0}, std={1})'.format(self.mean, self.std)
 
 
+class CustomAugmentation:
+    def __init__(self, resize, mean, std, **args):
+        self.transform = A.Compose([
+            A.Resize(resize[0], resize[1]),
+#             A.CenterCrop(224, 224, Image.BILINEAR),
+            A.HorizontalFlip(p=0.5),
+            A.Normalize(mean=mean, std=std),
+            ToTensorV2()
+        ])
 
+    def __call__(self, image):
+        return self.transform(image=np.array(image)) # image=np.array(image)
 
 
 class MaskLabels(int, Enum):
@@ -301,17 +297,17 @@ class MaskSplitByProfileDataset(MaskBaseDataset):
 class TestDataset(Dataset):
     def __init__(self, img_paths, resize, mean=(0.548, 0.504, 0.479), std=(0.237, 0.247, 0.246)):
         self.img_paths = img_paths
-        self.transform = A.Compose([
-            A.Resize(resize[0], resize[1]),
-            A.Normalize(mean=mean, std=std),
-            ToTensorV2()
+        self.transform = Compose([
+            Resize(resize, Image.BILINEAR),
+            ToTensor(),
+            Normalize(mean=mean, std=std),
         ])
 
     def __getitem__(self, index):
         image = Image.open(self.img_paths[index])
 
         if self.transform:
-            image = self.transform(image=np.array(image))
+            image = self.transform(image)
         return image
 
     def __len__(self):
