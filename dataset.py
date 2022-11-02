@@ -54,9 +54,26 @@ class AddGaussianNoise(object):
 class CustomAugmentation:
     def __init__(self, resize, mean, std, **args):
         self.transform = A.Compose([
+            A.Crop(41,70,336,440),
             A.Resize(resize[0], resize[1]),
+            A.RandomBrightnessContrast(contrast_limit=(0.3, 0.6), p=1.0),
+#             A.ColorJitter(),
 #             A.CenterCrop(224, 224, Image.BILINEAR),
             A.HorizontalFlip(p=0.5),
+            A.Normalize(mean=mean, std=std),
+            ToTensorV2()
+        ])
+
+    def __call__(self, image):
+        return self.transform(image=np.array(image)) # image=np.array(image)
+
+class ValAugmentation:
+    def __init__(self, resize, mean, std, **args):
+        self.transform = A.Compose([
+#             A.Crop(41,70,336,440),
+            A.Resize(resize[0], resize[1]),
+#             A.CenterCrop(224, 224, Image.BILINEAR),
+#             A.HorizontalFlip(p=0.5),
             A.Normalize(mean=mean, std=std),
             ToTensorV2()
         ])
@@ -298,6 +315,7 @@ class TestDataset(Dataset):
     def __init__(self, img_paths, resize, mean=(0.548, 0.504, 0.479), std=(0.237, 0.247, 0.246)):
         self.img_paths = img_paths
         self.transform = A.Compose([
+#             A.Crop(41,70,336,440),
             A.Resize(resize[0], resize[1]),
             A.Normalize(mean=mean, std=std),
             ToTensorV2()
