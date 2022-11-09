@@ -9,7 +9,6 @@ def cutmix(batch, alpha):
     indices = torch.randperm(data['image'].size(0))
     shuffled_data = data['image'][indices]
     shuffled_targets = targets[indices]
-
     lam = np.random.beta(alpha, alpha)
 
     image_h, image_w = data['image'].shape[2:]
@@ -43,7 +42,7 @@ class CutMixCriterion:
 #         self.criterion = nn.CrossEntropyLoss(reduction=reduction)
         self.criterion = create_criterion(args.criterion)
 
-    def __call__(self, preds, targets):
+    def __call__(self, preds, targets, classes=18):
         targets1, targets2, lam = targets
         return lam * self.criterion(
-            preds, targets1) + (1 - lam) * self.criterion(preds, targets2)
+            preds, targets1, classes) + (1 - lam) * self.criterion(preds, targets2, classes)
