@@ -47,7 +47,8 @@ class F1Loss(nn.Module):
         self.classes = classes
         self.epsilon = epsilon
 
-    def forward(self, y_pred, y_true):
+    def forward(self, y_pred, y_true, classes=18):
+        self.classes = classes
         assert y_pred.ndim == 2
         assert y_true.ndim == 1
         y_true = F.one_hot(y_true, self.classes).to(torch.float32)
